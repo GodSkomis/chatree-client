@@ -1,0 +1,30 @@
+
+
+mat-selection-list:hover {
+    border: 2px solid #075E54;
+    border-radius: var(--mat-card-outlined-container-shape, var(--mat-sys-corner-medium));
+    // animation: button-particles 1s ease-in-out infinite;
+    transform: translateY(-2px);
+}
+
+mat-selection-list:active {
+    transform: scale(0.995);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.mdc-list {
+    padding: 0 0;
+}
+
+mat-nav-list {
+    background: #fff;
+}
+
+.side-chats-list {
+    width: 300px;
+    // max-width: 30vw;
+    height: 90vh;
+    // max-height: 90vh;
+    overflow-y: auto;
+    
+}

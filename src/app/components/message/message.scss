@@ -1,0 +1,22 @@
+
+
+:host {
+  padding: 8px 12px;
+  border-radius: 18px;
+  max-width: 30%;
+  max-width: 50%;
+  word-wrap: break-word;
+  &.me {
+    background-color: #dcf8c6;
+    // align-self: flex-end;
+  }
+  &:not(.me) {
+    background-color: #fff;
+    // align-self: flex-start;
+  }
+  .time {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.45);
+    text-align: right;
+  }
+}

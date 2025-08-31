@@ -1,0 +1,11 @@
+
+
+<mat-nav-list class="side-chats-list">
+  @for (chat of chats; track $index) {
+    <mat-selection-list>
+      <app-sidebar-chat></app-sidebar-chat>
+    </mat-selection-list>
+  }
+</mat-nav-list>
+
+

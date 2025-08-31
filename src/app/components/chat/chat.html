@@ -1,0 +1,22 @@
+
+
+<div class="chat-container">
+  <div class="chat-header">
+      <img src="https://bootdey.com/img/Content/avatar/avatar6.png">
+    <div class="chat-header-name">
+      <a>John Doe</a>
+      <span>Ststus</span>
+    </div>
+  </div>
+
+  <div class="chat-messages">
+    @for (message of messages; track $index) {
+      <app-message [message]="message"></app-message>
+    }
+  
+  </div>
+
+  <app-input></app-input>
+  
+</div>
+
