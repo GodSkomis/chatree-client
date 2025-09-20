@@ -5,14 +5,18 @@ use openmls_basic_credential::SignatureKeyPair;
 use openmls_rust_crypto::OpenMlsRustCrypto;
 use openmls::prelude::tls_codec::*;
 
+use crate::auth::signup::SignUpSchema;
+
 
 fn ciphersuite() -> Ciphersuite {
   Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519
 }
 
+
 fn provider() -> OpenMlsRustCrypto {
   OpenMlsRustCrypto::default()
 }
+
 
 #[command]
 pub fn generate_keypackage(user_id: i64) -> String {
@@ -39,6 +43,13 @@ pub fn generate_keypackage(user_id: i64) -> String {
   base64::engine::general_purpose::STANDARD.encode(serialized)
 }
 
+
+#[command]
+pub async fn signup(schema: &str) -> Result<(), String> {
+  let signup_schema: SignUpSchema = serde_json::from_str(schema).map_err(|e| e.to_string())?;
+  let result = crate::auth::signup::signup(signup_schema).await?;
+  Ok(())
+}
 
 //////////////////////
 

@@ -1,5 +1,6 @@
 
 pub mod crypto;
+pub mod auth;
 
 
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
