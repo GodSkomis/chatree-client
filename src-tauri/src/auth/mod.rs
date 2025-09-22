@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 pub mod login;
 pub mod signup;
+pub mod state;
 
 
 const AUTH_ENPOINT: &'static str = "http://127.0.0.1:8000";

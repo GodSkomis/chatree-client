@@ -1,4 +1,5 @@
 use base64::Engine;
+use serde::Deserialize;
 use tauri::command;
 use openmls::prelude::*;
 use openmls_basic_credential::SignatureKeyPair;
@@ -17,6 +18,10 @@ fn provider() -> OpenMlsRustCrypto {
   OpenMlsRustCrypto::default()
 }
 
+
+pub struct CryptoState {
+  pub provider: OpenMlsRustCrypto,
+}
 
 #[command]
 pub fn generate_keypackage(user_id: i64) -> String {
@@ -40,16 +45,10 @@ pub fn generate_keypackage(user_id: i64) -> String {
 
   let serialized = kp.tls_serialize_detached().unwrap();
 
+  let (kp, _rest) = KeyPackage::deserialize(serialized);
   base64::engine::general_purpose::STANDARD.encode(serialized)
 }
 
-
-#[command]
-pub async fn signup(schema: &str) -> Result<(), String> {
-  let signup_schema: SignUpSchema = serde_json::from_str(schema).map_err(|e| e.to_string())?;
-  let result = crate::auth::signup::signup(signup_schema).await?;
-  Ok(())
-}
 
 //////////////////////
 
@@ -58,7 +57,7 @@ mod tst {
   use std::{collections::HashMap, ops::Deref, sync::Arc};
   use parking_lot::{Mutex, RwLock};
 
-use openmls::{group::{GroupId, MlsGroup, MlsGroupCreateConfig, MlsGroupJoinConfig, StagedWelcome}, prelude::{group_info::GroupInfo, tls_codec::{Deserialize, Serialize}, BasicCredential, Ciphersuite, CredentialType, CredentialWithKey, KeyPackage, KeyPackageBundle, MlsMessageBodyIn, MlsMessageIn, MlsMessageOut, OpenMlsProvider, SignatureScheme, Welcome}};
+  use openmls::{group::{GroupId, MlsGroup, MlsGroupCreateConfig, MlsGroupJoinConfig, StagedWelcome}, prelude::{group_info::GroupInfo, tls_codec::{Deserialize, Serialize}, BasicCredential, Ciphersuite, CredentialType, CredentialWithKey, KeyPackage, KeyPackageBundle, MlsMessageBodyIn, MlsMessageIn, MlsMessageOut, OpenMlsProvider, SignatureScheme, Welcome}};
   use openmls_basic_credential::SignatureKeyPair;
   use openmls_rust_crypto::OpenMlsRustCrypto;
 
@@ -72,7 +71,7 @@ use openmls::{group::{GroupId, MlsGroup, MlsGroupCreateConfig, MlsGroupJoinConfi
       signature_algorithm: SignatureScheme,
       provider: &impl OpenMlsProvider,
   ) -> (CredentialWithKey, SignatureKeyPair) {
-      let credential = BasicCredential::new(identity);
+      // let credential = BasicCredential::new(identity);
       let signature_keys =
           SignatureKeyPair::new(signature_algorithm)
               .expect("Error generating a signature key pair.");
