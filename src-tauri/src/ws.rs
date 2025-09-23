@@ -276,14 +276,34 @@ pub mod ws_handler {
 
 
 pub mod delivery_service {
-  use futures::{channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender}, stream::SplitStream, StreamExt};
+  use futures::{channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender}, stream::{SplitSink, SplitStream}, StreamExt};
   use parking_lot::Mutex;
   use tauri::command;
   use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
   use tokio::{net::{TcpListener, TcpStream}, task::JoinHandle};
   use std::sync::Arc;
   
-  use super::chat_runtime::{ChatRuntime, ChatService};
+  use super::chat_runtime::ChatRuntime;
+
+
+  type WsSink = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
+  type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
+
+  struct WsService {
+    sink: Arc<Mutex<WsSink>>,
+    // reader: Arc<Mutex<WsReader>>
+    reader: WsReader,
+  }
+
+  impl WsService {
+      fn new(sink: WsSink, reader: WsReader) -> Self {
+        Self {
+          sink: Arc::new(Mutex::new(sink)),
+          reader: reader,
+        }
+      }
+  }
+
 
   #[command]
   async fn connect_to_ds(url: String, state: tauri::State<'_, Arc<Mutex<ChatRuntime>>>) -> Result<(), String> {
@@ -302,28 +322,39 @@ pub mod delivery_service {
     .map_err(|err| err.to_string())?;
 
     let (ws_sink, mut ws_reader) = ws_stream.split();
-
     
-
+    let ws_serivce = WsService::new(ws_sink, ws_reader);
     // *runtime = ChatRuntime::Running(ChatService::new(tx, rx));
     Ok(())
   }
 
-  async fn run_ws_handler(ws_reader: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>) -> JoinHandle<()> {
-    tokio::spawn(async move {
-      while let Some(incoming_msg) = ws_reader.next().await {
-          match incoming_msg {
-              Ok(msg) => {
-                  // ws_sink.lock().await.send(Message::Text("Pong".into())).await.unwrap();
-                  sink.send(Message::)
-              }
-              Err(e) => {
-                  eprintln!("Error reading message: {}", e);
-                  break;
-              }
-          }
-      }
-      println!("Client disconnected / reader ended");
-    })
+  impl WsService {
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+    async fn run_ws_handler(&self) -> JoinHandle<()> {
+      tokio::spawn(async move {
+        while let Some(incoming_msg) = self.reader.next().await {
+            match incoming_msg {
+                Ok(msg) => {
+                    // ws_sink.lock().await.send(Message::Text("Pong".into())).await.unwrap();
+                    // self.sink.lock().send(Message::)
+                    match msg {
+                        Message::Text(utf8_bytes) => todo!(),
+                        Message::Binary(bytes) => todo!(),
+                        Message::Ping(bytes) => self.sink.lock().send(Message::Pong(())).await,
+                        Message::Pong(bytes) => todo!(),
+                        Message::Close(close_frame) => todo!(),
+                        Message::Frame(frame) => todo!(),
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error reading message: {}", e);
+                    break;
+                }
+            }
+        }
+        println!("Client disconnected / reader ended");
+      })
+    }
   }
 }
