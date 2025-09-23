@@ -3,7 +3,10 @@ use parking_lot::Mutex;
 use tauri::Manager;
 
 mod ws;
-use ws::chat_runtime::ChatRuntime;
+use ws::{chat_runtime::ChatRuntime, ws_handler::{WsGlobalRouterBuilder, WsRouterBuilder}};
+
+mod commands;
+use commands::member::handlers::FindMemberHandler;
 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -12,6 +15,16 @@ pub fn run() {
         .setup(
             |app| {
                 app.manage(Arc::new(Mutex::new(ChatRuntime::default())));
+                app.manage(Arc::new(
+                    WsGlobalRouterBuilder::new()
+                        .add_router(
+                            "member",
+                            WsRouterBuilder::new()
+                                .add_handler("find", FindMemberHandler)
+                                .result()
+                        )
+                        .result()
+                ));
                 Ok(())
             }
         )

@@ -32,4 +32,6 @@ once_cell = "1.21.3"
 tokio-tungstenite = "0.27.0"
 futures = "0.3.31"
 tokio = "1.47.1"
+async-trait = "0.1.89"
+erased-serde = "0.4.8"
 

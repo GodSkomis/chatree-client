@@ -15,6 +15,7 @@
 
 pub mod chat_runtime {
   use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+  use tokio::task::JoinHandle;
   use tokio_tungstenite::tungstenite::Message;
 
 
@@ -33,30 +34,198 @@ pub mod chat_runtime {
 
   pub struct ChatService {
     tx: UnboundedSender<Message>,
-    rx: UnboundedReceiver<Message>
+    rx: UnboundedReceiver<Message>,
+    ws_handle: JoinHandle<()>
   }
 
   impl ChatService {
-    pub fn new(tx: UnboundedSender<Message>, rx: UnboundedReceiver<Message>) -> Self {
+    pub fn new(
+      tx: UnboundedSender<Message>,
+      rx: UnboundedReceiver<Message>,
+      ws_handle: JoinHandle<()>
+    ) -> Self {
       Self {
         tx: tx,
-        rx: rx
+        rx: rx,
+        ws_handle
       }
     }
+
     pub fn sender(&self) -> UnboundedSender<Message> {
       self.tx.clone()
+    }
+
+    pub fn abort(&self) {
+      self.ws_handle.abort();
     }
   }
 }
 
 
+pub mod ws_handler {
+  use std::collections::HashMap;
+  use async_trait::async_trait;
+  use serde::{Deserialize, Serialize};
+
+  pub enum WsError {
+    RouteNotFound,
+    MethodNotFound,
+    Custom(String)
+  }
+
+  #[derive(Deserialize, Debug, Clone)]
+  pub struct WsRequest {
+    id: i32,
+    pub route: String,
+    pub method: String,
+    pub data: Option<serde_json::Value>
+  }
+
+  #[derive(Serialize, Debug, Clone)]
+  pub struct WsResponse {
+    id: i32,
+    route: String,
+    method: String,
+    pub data: Option<serde_json::Value>,
+    pub error: Option<String>
+  }
+
+  struct WsResponseBuilder {
+    response : WsResponse
+  }
+
+  impl WsResponseBuilder {
+    fn from_request(req: &WsRequest) -> Self {
+        Self {
+            response: WsResponse {
+              id: req.id.clone(),
+              route: req.route.clone(),
+              method: req.method.clone(),
+              data: None,
+              error: None
+            }
+        }
+    }
+
+    fn finish(mut self, data: Option<serde_json::Value>, error: Option<String>) -> WsResponse {
+      self.response.data = data;
+      self.response.error = error;
+
+      self.response
+    }
+}
+  
+  #[async_trait]
+  pub trait WsHandler: Send + Sync {
+    async fn handle(&self, message: Option<serde_json::Value>) -> Result<Option<serde_json::Value>, String>;
+  }
+
+  pub struct WsGlobalRouterBuilder {
+    routers: HashMap<String, WsRouter>
+  }
+
+  impl WsGlobalRouterBuilder {
+    pub fn new() -> Self {
+      Self {
+        routers: HashMap::new()
+      } 
+    }
+
+    pub fn add_router(mut self, route: &str, router: WsRouter) -> Self {
+      let route = String::from(route).to_lowercase();
+      let err_msg = format!("Router ({}) with given name already exists", &route);
+      let is_exists = 
+        self.routers.insert(route, router);
+        
+      if let Some(_) = is_exists {
+        panic!("{}", err_msg);
+      }
+
+      self
+    }
+
+    pub fn result(self) -> WsGlobalRouter {
+      WsGlobalRouter { routers: self.routers }
+    }
+  }
+
+  pub struct WsGlobalRouter {
+    routers: HashMap<String, WsRouter>
+  }
+
+  impl WsGlobalRouter {
+    pub async fn handle(&self, message: WsRequest) -> Result<Option<WsResponse>, WsError> {
+      let router = match self.routers.get(&message.route) {
+          Some(_router) => _router,
+          None => return Err(WsError::RouteNotFound)
+      };
+
+      router.handle(message).await
+    }
+}
+
+
+  pub struct WsRouterBuilder {
+    handlers: HashMap<String, Box<dyn WsHandler + 'static>>
+  }
+
+  impl WsRouterBuilder {
+    
+    pub fn new() -> Self {
+      Self {
+        handlers: HashMap::default()
+      }
+    }
+
+    pub fn add_handler(mut self, method: &str, handler: impl WsHandler + 'static) -> Self {
+      let method = String::from(method).to_lowercase();
+      let err_msg = format!("Method ({}) with given name already exists", &method);
+      let is_exists = 
+      self.handlers.insert(method, Box::new(handler));
+        
+      if let Some(_) = is_exists {
+        panic!("{}", err_msg);
+      }
+
+      self
+    }
+
+    pub fn result(self) -> WsRouter {
+      WsRouter { handlers: self.handlers }
+    }
+
+  }
+
+
+  pub struct WsRouter {
+    handlers: HashMap<String, Box<dyn WsHandler + 'static>>
+  }
+
+  impl WsRouter {
+      pub async fn handle(&self, message: WsRequest) -> Result<Option<WsResponse>, WsError> {
+        let handler = match self.handlers.get(&message.method) {
+            Some(_handler) => _handler,
+            None => return Err(WsError::MethodNotFound)
+        };
+
+        let response_builder = WsResponseBuilder::from_request(&message);
+
+        match handler.handle(message.data).await {
+            Ok(_data) => Ok(Some(response_builder.finish(_data, None))),
+            Err(_error) => Ok(Some(response_builder.finish(None, Some(_error)))),
+        }
+      }
+  }
+
+}
+
 
 pub mod delivery_service {
-  use futures::{channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender}, StreamExt};
+  use futures::{channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender}, stream::SplitStream, StreamExt};
   use parking_lot::Mutex;
   use tauri::command;
-  use tokio_tungstenite::{connect_async, tungstenite::Message};
-  use tokio::net::TcpListener;
+  use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+  use tokio::{net::{TcpListener, TcpStream}, task::JoinHandle};
   use std::sync::Arc;
   
   use super::chat_runtime::{ChatRuntime, ChatService};
@@ -78,9 +247,15 @@ pub mod delivery_service {
     .map_err(|err| err.to_string())?;
 
     let (ws_sink, mut ws_reader) = ws_stream.split();
-    let sink = ws_sink;
 
-    let q = tokio::spawn(async move {
+    
+
+    // *runtime = ChatRuntime::Running(ChatService::new(tx, rx));
+    Ok(())
+  }
+
+  async fn run_ws_handler(ws_reader: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>) -> JoinHandle<()> {
+    tokio::spawn(async move {
       while let Some(incoming_msg) = ws_reader.next().await {
           match incoming_msg {
               Ok(msg) => {
@@ -94,9 +269,6 @@ pub mod delivery_service {
           }
       }
       println!("Client disconnected / reader ended");
-    });
-
-    // *runtime = ChatRuntime::Running(ChatService::new(tx, rx));
-    Ok(())
+    })
   }
 }
