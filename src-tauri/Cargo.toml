@@ -34,4 +34,5 @@ futures = "0.3.31"
 tokio = "1.47.1"
 async-trait = "0.1.89"
 erased-serde = "0.4.8"
+chute = "0.2.1"
 

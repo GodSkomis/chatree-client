@@ -13,6 +13,61 @@
 //   Ok(())
 // }
 
+
+pub mod chat_serivce {
+    use chute::{spmc::{Queue, Reader}, LendingReader};
+    use tokio::task::JoinHandle;
+
+    use super::ws_handler::WsRequest;
+
+
+  pub struct ChatService {
+    queue: Queue<WsRequest>
+  }
+
+  impl ChatService {
+      fn new() -> Self {
+        Self {
+          queue: Queue::new()
+        }
+      }
+
+      fn reader(&self) -> Reader<WsRequest> {
+        self.queue.reader()
+      }
+
+      async fn catch(&self, message_id: i32) -> WsRequest {
+        let mut reader = self.queue.reader();
+        let task = tokio::spawn(async move {
+            loop {
+              if let Some(msg) = reader.next() {
+                if msg.id == message_id {
+                  break msg.clone();
+                }
+              }
+            }
+        });
+
+        task.await.unwrap()
+      }
+
+      async fn catch_as_task(&self, message_id: i32) -> JoinHandle<WsRequest> {
+        let mut reader = self.queue.reader();
+        let task = tokio::spawn(async move {
+            loop {
+              if let Some(msg) = reader.next() {
+                if msg.id == message_id {
+                  break msg.clone();
+                }
+              }
+            }
+        });
+
+        task
+      }
+  }
+}
+
 pub mod chat_runtime {
   use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
   use tokio::task::JoinHandle;
@@ -75,7 +130,7 @@ pub mod ws_handler {
 
   #[derive(Deserialize, Debug, Clone)]
   pub struct WsRequest {
-    id: i32,
+    pub id: i32,
     pub route: String,
     pub method: String,
     pub data: Option<serde_json::Value>
